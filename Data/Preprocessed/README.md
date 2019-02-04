@@ -1,4 +1,6 @@
-## Preprocessed but cleaned and interpolated data
+### Preprocessed but cleaned and interpolated data
+
+## In Data_historical
 LOCS: locations in lake only ['BB','BO','HA','HT','LB','LBP','LBS']
 
 TIME: decimal years (daily increments, at midday, from 2013)
@@ -40,3 +42,18 @@ RAIN: rain... time
 PRES: barometric pressure... time
 
 
+## In Data_sat_locations
+The lat/lons of 53 locations defining the skeleton of the lake, created using 
+ginput in python
+
+## In Data_LS8_timeseries.npz
+COL: the *color* of seven spectral bands:
+BANDS: the spectral bands:
+- 443
+- 483
+- 561
+- 655
+- 865
+- 1609
+- 2201
+TIME: Time (decimal years)
