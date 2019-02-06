@@ -1,5 +1,8 @@
 # make_something.py
 
+import matplotlib.pyplot as plt
+#plt.style.use(['seaborn-darkgrid'])
+import pymc3 as pm
 import numpy as np
 
 folderName = './Results/'
@@ -34,9 +37,9 @@ dates = data['TIME']
 
 # mask unwanted entries: 
 inputs = {'abundances':{'TBV'}, # need loc and div
-	'divisions':{1,2,3},
-	'locations':{'LB','BO'},
-	'nutrients':{'NUT1'},		# need loc
+	'divisions':[4],
+	'locations':['LB','BO'],
+	'nutrients':{}, #{'NUT2'},		# need loc
 	'weather':{'TEMP'}}	
 
 inputOutput = inputs.copy()
@@ -47,27 +50,28 @@ dataList = []
 for dc in inputs['abundances']:
 	for loc in inputs['locations']:
 		for div in inputs['divisions']:
-			dataFull = np.append(dataFull, data[dc][], 0)
+			ind1 = inputs['locations'].index(loc)
+			dataFull = np.append(dataFull, data[dc][:,ind1,div])
 
-for 
+for nut in inputs['nutrients']:
+	for loc in inputs['locations']:
+		dataFull = np.append(dataFull, data[nut][:,np.where(data['LOCS'] == loc)[0]])
 
-for dc in inputs:
-	for item in inputs[dc]:
-		dataLen = len(data2[dc][item])
-		dataAdd = data2[dc][item].reshape((dataLen,1))
-		dataFull = np.append(dataFull.reshape((dataLen,-1)),dataAdd,axis=1)
-		dataList.append(item)
+for item in inputs['weather']:
+	dataFull = np.append(dataFull, data[item])
 
-mask = np.ndarray((dataFull.shape[0],1), dtype=bool)
-mask = mask|~mask
-for dc in inputOutput:
-	for item in inputOutput[dc]:
-		itemMask = ~np.isnan(data2[dc][item])
-		print(item + ' has ' + str(itemMask.sum()) + ' entries.')
-		mask = mask & itemMask.reshape((dataLen,1))
-		print(mask.shape)
-y1 = np.array( data2['toxins']['cylL'] ).reshape((dataLen,1))[mask]
-dataFull = dataFull[mask.flatten(),:]
+dataFull = dataFull.reshape((data['TEMP'].shape[0],-1), order = 'F')
+print('dataFull shape = ' + str(dataFull.shape) + '.')
+
+# Data matrix made. Filter for appropriate dates. Process.
+
+# dates/times with NaNs
+nanDays = np.any(np.isnan(dataFull),1)
+domain = ~nanDays
+print('Domain consists of ' + str(dataFull[domain,0].shape[0]) + ' days.')
+
+# response variable
+y1 = np.array( data['TOX3'][:,4] )
 
 # initiate model
 # assume linear response to the variables, normal priors for coefficients
@@ -80,12 +84,14 @@ with pm.Model() as model:
 	coeffs = pm.Normal('c', mu=0, sd=10, shape=dataFull.shape[1])
 	mu = 0
 	for k in np.arange(dataFull.shape[1]):
-		mu += dataFull[:,k]*coeffs[k]
-		print('coeff'+str(k)+' = '+dataList[k])
+		mu += dataFull[domain,k]*coeffs[k]
+		#print('coeff'+str(k)+' = '+dataList[k])
 	eta = pm.Normal('noise', mu=norm100, sd=10)
-	obs = pm.Normal('obs', mu = mu+eta, sd = 1, observed = y1)
+	#eta2 = pm.AR('ar_noise',eta,sd = 1.0)
+	obs = pm.Normal('obs', mu = mu+eta, sd = 1, observed = y1[domain])
 	trace = pm.sample(5000, cores = 4, tuning = 500)
-save_obj(trace, saveTraceName)
+saveTraceName = './trace'
+np.save(trace, saveTraceName)
 
 pm.traceplot(trace)
 savePlotName = folderName+str(mSamples)+'cores'+str(mCores)+'tuning'+str(mTuning)
@@ -93,3 +99,6 @@ plt.savefig(savePlotName)
 
 plt.show()
 
+ppc_w = pm.sample_posterior_predictive_w(traces, 1000, models,
+                        weights=comp.weight.sort_index(ascending=True),
+                        progressbar=False)
