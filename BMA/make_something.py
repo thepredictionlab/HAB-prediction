@@ -7,7 +7,7 @@ import numpy as np
 
 folderName = './Results/'
 data_path = '../Data/Preprocessed/'
-data_file = 'Data_historical.npz'
+data_file = 'Data_hist_interp.npz'
 
 data = np.load(data_path + data_file)
 ########################################################################
@@ -36,7 +36,7 @@ data = np.load(data_path + data_file)
 dates = data['TIME']
 
 # mask unwanted entries: 
-inputs = {'abundances':{'TBV'}, # need loc and div
+inputs = {'abundances':{},#'TBV'}, # need loc and div
 	'divisions':[4],
 	'locations':['LB','BO'],
 	'nutrients':{}, #{'NUT2'},		# need loc
@@ -50,7 +50,7 @@ dataList = []
 for dc in inputs['abundances']:
 	for loc in inputs['locations']:
 		for div in inputs['divisions']:
-			ind1 = inputs['locations'].index(loc)
+			ind1 = data['LOCS'].tolist().index(loc)
 			dataFull = np.append(dataFull, data[dc][:,ind1,div])
 
 for nut in inputs['nutrients']:
@@ -61,12 +61,19 @@ for item in inputs['weather']:
 	dataFull = np.append(dataFull, data[item])
 
 dataFull = dataFull.reshape((data['TEMP'].shape[0],-1), order = 'F')
+dataFull[7:] = dataFull[:-7]
+dataFull[:7] = np.reshape(np.zeros(7),(7,1))
 print('dataFull shape = ' + str(dataFull.shape) + '.')
 
-# Data matrix made. Filter for appropriate dates. Process.
+# Data matrix made. Make output matrix.
+
+dataOut = data['TOX3'][:,4]
+
+# Filter for appropriate dates. Process.
 
 # dates/times with NaNs
 nanDays = np.any(np.isnan(dataFull),1)
+nanDays = nanDays | np.isnan(dataOut)
 domain = ~nanDays
 print('Domain consists of ' + str(dataFull[domain,0].shape[0]) + ' days.')
 
@@ -76,12 +83,13 @@ y1 = np.array( data['TOX3'][:,4] )
 # initiate model
 # assume linear response to the variables, normal priors for coefficients
 
-mSamples = 2000
-mCores = 4
-mTuning = 500
+mSamples = 10000
+mCores = 2
+mTuning = 2500
+linModel = pm.Model()
 with pm.Model() as model:
-	norm100 = pm.Normal('n', mu=0, sd=100) # too broad?
-	coeffs = pm.Normal('c', mu=0, sd=10, shape=dataFull.shape[1])
+	norm100 = pm.Normal('n', mu=0, sd=1) # too broad?
+	coeffs = pm.Normal('c', mu=0, sd=1, shape=dataFull.shape[1])
 	mu = 0
 	for k in np.arange(dataFull.shape[1]):
 		mu += dataFull[domain,k]*coeffs[k]
@@ -89,11 +97,15 @@ with pm.Model() as model:
 	eta = pm.Normal('noise', mu=norm100, sd=10)
 	#eta2 = pm.AR('ar_noise',eta,sd = 1.0)
 	obs = pm.Normal('obs', mu = mu+eta, sd = 1, observed = y1[domain])
-	trace = pm.sample(5000, cores = 4, tuning = 500)
-saveTraceName = './trace'
-np.save(trace, saveTraceName)
+	trace = pm.sample(mSamples, cores = 4, tuning = mTuning)
 
+saveTraceName = './trace.npz'
+np.savez(saveTraceName,TRACE=trace)
+
+pm.summary(trace)
 pm.traceplot(trace)
+plt.show()
+
 savePlotName = folderName+str(mSamples)+'cores'+str(mCores)+'tuning'+str(mTuning)
 plt.savefig(savePlotName)
 

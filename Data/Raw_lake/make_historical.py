@@ -1,3 +1,9 @@
+## Added year2datetime function
+## Made nutrient and toxin levels log-scaled
+## interpolated throughout the year for each
+## (no data between end of one year and start of next)
+
+
 ## Code to preprocess Detroit Lake empirical data Spring 2019
 #! James Watson, The Prediction Lab 2019
 import pandas as pd
@@ -5,15 +11,26 @@ import numpy as np
 import openpyxl as px
 import matplotlib.pylab as plt
 from scipy import interpolate
-
+interp_kind = 'previous'
 
 ###############################################################################
 #### Function for calculating decimal years
 from datetime import datetime
+def yearLength(yr):
+    year_length = datetime(year=yr+1, month=1, day=1) - datetime(year=yr, month=1, day=1)
+    return year_length.days
+
 def datetime2year(dt):
     year_part = dt - datetime(year=dt.year, month=1, day=1)
     year_length = datetime(year=dt.year+1, month=1, day=1) - datetime(year=dt.year, month=1, day=1)
     return dt.year + year_part/year_length
+
+def year2datetime(date):
+    year = np.floor(date)
+    year_part = date - year
+    Seconds = year_part*yearLength(year)*24*60*60
+    Date = dt.datetime(year=year,month=1,day=1) + dt.timedelta(seconds = Seconds)
+    return Date
 
 ## Create daily timeseries in decimal years
 import datetime as dt
@@ -24,11 +41,11 @@ for i in range(2200):
     TIME = np.hstack((TIME,datetime2year(date)))
 
 ## Locations we care about
-LOCS = ['BB','BO','HA','HT','LB','LBP','LBS']
+LOCS = ['BB','BO','HA','HT','LB','LBP','LBS','MG']
 
 
 ################################################################ NUTRIENTS ####
-data = px.load_workbook("./Historical/Nutrients.xlsx",data_only=True)
+data = px.load_workbook("../Data/Raw_lake/Historical/Nutrients.xlsx",data_only=True)
 ws = data['Nutrients']
 
 ## Extract values
@@ -50,80 +67,128 @@ uloc = np.unique(loc)
 column = ws['D'] 
 nut1 = np.zeros(len(column)-1)
 for x in np.arange(1,len(column)):
-    nut1[x-1] = column[x].value
+    nut1[x-1] = np.log(column[x].value)
 
 # O-Phos (mg/L)
 column = ws['E'] 
 nut2 = np.zeros(len(column)-1)
 for x in np.arange(1,len(column)):
-    nut2[x-1] = column[x].value
+    nut2[x-1] = np.log(column[x].value)
 
 # TN (mg/L)
 column = ws['F'] 
 nut3 = np.zeros(len(column)-1)
 for x in np.arange(1,len(column)):
-    nut3[x-1] = column[x].value
+    nut3[x-1] = np.log(column[x].value)
 
 # T-Phos (mg/L)
 column = ws['G'] 
 nut4 = np.zeros(len(column)-1)
 for x in np.arange(1,len(column)):
-    nut4[x-1] = column[x].value
+    nut4[x-1] = np.log(column[x].value)
 
 # Interpolate to daily time series
 # and rearrange so its timeseries of each nut for each location
 NUT1 = np.ones((len(TIME),len(LOCS))) * np.nan
 for i in np.arange(0,len(LOCS)):
     ID = np.where(loc == LOCS[i])[0]
-    n = nut1[ID]
-    t = Time[ID] 
-    f = interpolate.interp1d(t,n,kind='nearest',bounds_error=False,fill_value=np.nan)
-    N = f(TIME) 
-    JD = np.where(np.isnan(N)==0)[0]
-    KD = np.where(np.diff(N[JD])==0)
-    N[JD[KD]] = np.nan
-    NUT1[:,i] = N 
+    if len(ID) > 3:
+        n = nut1[ID]
+        t = Time[ID] 
+        f = interpolate.interp1d(t,n,kind=interp_kind,bounds_error=False,fill_value=np.nan)
+        N = f(TIME) 
+        yr = 2013
+        while yr <2019:
+            if (np.where(t < yr+1)[0].shape[0] > 0)&(np.where(t >= yr+1)[0].shape[0] > 0):
+                maxSample = np.max(t[t < yr+1])
+                nextSample = np.min(t[t >= yr+1])
+                yl = yearLength(yr)
+                maxDay = (np.ceil((maxSample - yr)*yl - 0.5) + 0.5)/yl + yr
+                nextYr = int(np.floor(nextSample))
+                nextDay = (np.floor((nextSample - nextYr)*yl - 0.5) + 0.5)/yl + nextYr
+                yl = yearLength(nextYr)
+                N[(TIME > maxDay)&(TIME < nextDay)] = np.nan
+                yr = nextYr
+            else:
+                yr += 1
+        NUT1[:,i] = N 
     
 NUT2 = np.ones((len(TIME),len(LOCS))) * np.nan
 for i in np.arange(0,len(LOCS)):
     ID = np.where(loc == LOCS[i])[0]
-    n = nut2[ID]
-    t = Time[ID] 
-    f = interpolate.interp1d(t,n,kind='nearest',bounds_error=False,fill_value=np.nan)
-    N = f(TIME) 
-    JD = np.where(np.isnan(N)==0)[0]
-    KD = np.where(np.diff(N[JD])==0)
-    N[JD[KD]] = np.nan
-    NUT2[:,i] = N 
+    if len(ID) > 3:
+        n = nut2[ID]
+        t = Time[ID] 
+        f = interpolate.interp1d(t,n,kind=interp_kind,bounds_error=False,fill_value=np.nan)
+        N = f(TIME) 
+        yr = 2013
+        while yr <2019:
+            if (np.where(t < yr+1)[0].shape[0] > 0)&(np.where(t >= yr+1)[0].shape[0] > 0):
+                maxSample = np.max(t[t < yr+1])
+                nextSample = np.min(t[t >= yr+1])
+                yl = yearLength(yr)
+                maxDay = (np.ceil((maxSample - yr)*yl - 0.5) + 0.5)/yl + yr
+                nextYr = int(np.floor(nextSample))
+                nextDay = (np.floor((nextSample - nextYr)*yl - 0.5) + 0.5)/yl + nextYr
+                yl = yearLength(nextYr)
+                N[(TIME > maxDay)&(TIME < nextDay)] = np.nan
+                yr = nextYr
+            else:
+                yr += 1
+        NUT2[:,i] = N 
     
 NUT3 = np.ones((len(TIME),len(LOCS))) * np.nan
 for i in np.arange(0,len(LOCS)):
     ID = np.where(loc == LOCS[i])[0]
-    n = nut3[ID]
-    t = Time[ID] 
-    f = interpolate.interp1d(t,n,kind='nearest',bounds_error=False,fill_value=np.nan)
-    N = f(TIME) 
-    JD = np.where(np.isnan(N)==0)[0]
-    KD = np.where(np.diff(N[JD])==0)
-    N[JD[KD]] = np.nan
-    NUT3[:,i] = N 
+    if len(ID) > 3:
+        n = nut3[ID]
+        t = Time[ID] 
+        f = interpolate.interp1d(t,n,kind=interp_kind,bounds_error=False,fill_value=np.nan)
+        N = f(TIME) 
+        yr = 2013
+        while yr <2019:
+            if (np.where(t < yr+1)[0].shape[0] > 0)&(np.where(t >= yr+1)[0].shape[0] > 0):
+                maxSample = np.max(t[t < yr+1])
+                nextSample = np.min(t[t >= yr+1])
+                yl = yearLength(yr)
+                maxDay = (np.ceil((maxSample - yr)*yl - 0.5) + 0.5)/yl + yr
+                nextYr = int(np.floor(nextSample))
+                nextDay = (np.floor((nextSample - nextYr)*yl - 0.5) + 0.5)/yl + nextYr
+                yl = yearLength(nextYr)
+                N[(TIME > maxDay)&(TIME < nextDay)] = np.nan
+                yr = nextYr
+            else:
+                yr += 1
+        NUT3[:,i] = N 
     
 NUT4 = np.ones((len(TIME),len(LOCS))) * np.nan
 for i in np.arange(0,len(LOCS)):
     ID = np.where(loc == LOCS[i])[0]
-    n = nut4[ID]
-    t = Time[ID] 
-    f = interpolate.interp1d(t,n,kind='nearest',bounds_error=False,fill_value=np.nan)
-    N = f(TIME) 
-    JD = np.where(np.isnan(N)==0)[0]
-    KD = np.where(np.diff(N[JD])==0)
-    N[JD[KD]] = np.nan
-    NUT4[:,i] = N 
+    if len(ID) > 3:
+        n = nut4[ID]
+        t = Time[ID] 
+        f = interpolate.interp1d(t,n,kind=interp_kind,bounds_error=False,fill_value=np.nan)
+        N = f(TIME) 
+        yr = 2013
+        while yr <2019:
+            if (np.where(t < yr+1)[0].shape[0] > 0)&(np.where(t >= yr+1)[0].shape[0] > 0):
+                maxSample = np.max(t[t < yr+1])
+                nextSample = np.min(t[t >= yr+1])
+                yl = yearLength(yr)
+                maxDay = (np.ceil((maxSample - yr)*yl - 0.5) + 0.5)/yl + yr
+                nextYr = int(np.floor(nextSample))
+                nextDay = (np.floor((nextSample - nextYr)*yl - 0.5) + 0.5)/yl + nextYr
+                yl = yearLength(nextYr)
+                N[(TIME > maxDay)&(TIME < nextDay)] = np.nan
+                yr = nextYr
+            else:
+                yr += 1
+        NUT4[:,i] = N 
     
 
 
 ################################################################### TOXINS ####
-data = px.load_workbook("./Historical/CyanotoxinConcentrations.xlsx",data_only=True)
+data = px.load_workbook("../Data/Raw_lake/Historical/CyanotoxinConcentrations.xlsx",data_only=True)
 
 ## Extract values from LCMSMS
 # Time
@@ -146,13 +211,17 @@ uloc = np.unique(loc)
 column = ws['C']
 tox1 = np.zeros(len(column)-1)
 for x in np.arange(1,len(column)):
-    tox1[x-1] = column[x].value
+    tox1[x-1] = np.log(column[x].value)
 
 # Microcystin (ppb)
 column = ws['D']
 tox2 = np.zeros(len(column)-1)
 for x in np.arange(1,len(column)):
     tox2[x-1] = column[x].value
+    try:
+        tox2[x-1] = np.log(tox2[x-1])
+    except:
+        tox2[x-1] = np.nan
 
 # Interpolate to daily time series
 # and rearrange so its timeseries of each nut for each location
@@ -162,11 +231,22 @@ for i in np.arange(0,len(LOCS)):
     if len(ID)>3:
         n = tox1[ID]
         t = time[ID]
-        f = interpolate.interp1d(t,n,kind='nearest',bounds_error=False,fill_value=np.nan)
+        f = interpolate.interp1d(t,n,kind=interp_kind,bounds_error=False,fill_value=np.nan)
         N = f(TIME)
-        JD = np.where(np.isnan(N)==0)[0]
-        KD = np.where(np.diff(N[JD])==0)
-        N[JD[KD]] = np.nan
+        yr = 2013
+        while yr <2019:
+            if (np.where(t < yr+1)[0].shape[0] > 0)&(np.where(t >= yr+1)[0].shape[0] > 0):
+                maxSample = np.max(t[t < yr+1])
+                nextSample = np.min(t[t >= yr+1])
+                yl = yearLength(yr)
+                maxDay = (np.ceil((maxSample - yr)*yl - 0.5) + 0.5)/yl + yr
+                nextYr = int(np.floor(nextSample))
+                nextDay = (np.floor((nextSample - nextYr)*yl - 0.5) + 0.5)/yl + nextYr
+                yl = yearLength(nextYr)
+                N[(TIME > maxDay)&(TIME < nextDay)] = np.nan
+                yr = nextYr
+            else:
+                yr += 1
         TOX1[:,i] = N
 
 TOX2 = np.ones((len(TIME),len(LOCS))) * np.nan
@@ -175,11 +255,22 @@ for i in np.arange(0,len(LOCS)):
     if len(ID)>3:
         n = tox2[ID]
         t = time[ID]
-        f = interpolate.interp1d(t,n,kind='nearest',bounds_error=False,fill_value=np.nan)
+        f = interpolate.interp1d(t,n,kind=interp_kind,bounds_error=False,fill_value=np.nan)
         N = f(TIME)
-        JD = np.where(np.isnan(N)==0)[0]
-        KD = np.where(np.diff(N[JD])==0)
-        N[JD[KD]] = np.nan
+        yr = 2013
+        while yr <2019:
+            if (np.where(t < yr+1)[0].shape[0] > 0)&(np.where(t >= yr+1)[0].shape[0] > 0):
+                maxSample = np.max(t[t < yr+1])
+                nextSample = np.min(t[t >= yr+1])
+                yl = yearLength(yr)
+                maxDay = (np.ceil((maxSample - yr)*yl - 0.5) + 0.5)/yl + yr
+                nextYr = int(np.floor(nextSample))
+                nextDay = (np.floor((nextSample - nextYr)*yl - 0.5) + 0.5)/yl + nextYr
+                yl = yearLength(nextYr)
+                N[(TIME > maxDay)&(TIME < nextDay)] = np.nan
+                yr = nextYr
+            else:
+                yr += 1
         TOX2[:,i] = N
 
 
@@ -205,12 +296,16 @@ column = ws['C']
 tox3 = np.zeros(len(column)-1)
 for x in np.arange(1,len(column)):
     tox3[x-1] = column[x].value
+    try:
+        tox3[x-1] = np.log(tox3[x-1])
+    except:
+        tox3[x-1] = np.nan
 
 # Microcystin (ppb)
 column = ws['D']
 tox4 = np.zeros(len(column)-1)
 for x in np.arange(1,len(column)):
-    tox4[x-1] = column[x].value
+    tox4[x-1] = np.log(column[x].value)
 
 # Interpolate to daily time series
 # and rearrange so its timeseries of each nut for each location
@@ -220,11 +315,22 @@ for i in np.arange(0,len(LOCS)):
     if len(ID)>3:
         n = tox3[ID]
         t = time[ID]
-        f = interpolate.interp1d(t,n,kind='nearest',bounds_error=False,fill_value=np.nan)
+        f = interpolate.interp1d(t,n,kind=interp_kind,bounds_error=False,fill_value=np.nan)
         N = f(TIME)
-        JD = np.where(np.isnan(N)==0)[0]
-        KD = np.where(np.diff(N[JD])==0)
-        N[JD[KD]] = np.nan
+        yr = 2013
+        while yr <2019:
+            if (np.where(t < yr+1)[0].shape[0] > 0)&(np.where(t >= yr+1)[0].shape[0] > 0):
+                maxSample = np.max(t[t < yr+1])
+                nextSample = np.min(t[t >= yr+1])
+                yl = yearLength(yr)
+                maxDay = (np.ceil((maxSample - yr)*yl - 0.5) + 0.5)/yl + yr
+                nextYr = int(np.floor(nextSample))
+                nextDay = (np.floor((nextSample - nextYr)*yl - 0.5) + 0.5)/yl + nextYr
+                yl = yearLength(nextYr)
+                N[(TIME > maxDay)&(TIME < nextDay)] = np.nan
+                yr = nextYr
+            else:
+                yr += 1
         TOX3[:,i] = N
 
 TOX4 = np.ones((len(TIME),len(LOCS))) * np.nan
@@ -233,16 +339,27 @@ for i in np.arange(0,len(LOCS)):
     if len(ID)>3:
         n = tox4[ID]
         t = time[ID]
-        f = interpolate.interp1d(t,n,kind='nearest',bounds_error=False,fill_value=np.nan)
+        f = interpolate.interp1d(t,n,kind=interp_kind,bounds_error=False,fill_value=np.nan)
         N = f(TIME)
-        JD = np.where(np.isnan(N)==0)[0]
-        KD = np.where(np.diff(N[JD])==0)
-        N[JD[KD]] = np.nan
+        yr = 2013
+        while yr <2019:
+            if (np.where(t < yr+1)[0].shape[0] > 0)&(np.where(t >= yr+1)[0].shape[0] > 0):
+                maxSample = np.max(t[t < yr+1])
+                nextSample = np.min(t[t >= yr+1])
+                yl = yearLength(yr)
+                maxDay = (np.ceil((maxSample - yr)*yl - 0.5) + 0.5)/yl + yr
+                nextYr = int(np.floor(nextSample))
+                nextDay = (np.floor((nextSample - nextYr)*yl - 0.5) + 0.5)/yl + nextYr
+                yl = yearLength(nextYr)
+                N[(TIME > maxDay)&(TIME < nextDay)] = np.nan
+                yr = nextYr
+            else:
+                yr += 1
         TOX4[:,i] = N
 
 
 ################################################################ ALGAE  ####
-data = px.load_workbook("./Historical/Algae Speciation.xlsx",data_only=True)
+data = px.load_workbook("../Data/Raw_lake/Historical/Algae Speciation.xlsx",data_only=True)
 ws = data['PrioritySites']
 
 ## Extract values
@@ -286,13 +403,13 @@ den = np.zeros(len(column)-1)
 for x in np.arange(1,len(column)):
     den[x-1] = column[x].value
 
-# Tot Biovolumn
+# Tot Biovolume
 column = ws['K'] 
 tbv = np.zeros(len(column)-1)
 for x in np.arange(1,len(column)):
     tbv[x-1] = column[x].value
 
-# % Biovolumn
+# % Biovolume
 column = ws['L'] 
 fbv = np.zeros(len(column)-1)
 for x in np.arange(1,len(column)):
@@ -309,7 +426,7 @@ for i in np.arange(0,len(LOCS)):
             if len(KD) > 1:
                 n = den[KD]
                 t = time[KD]
-                f = interpolate.interp1d(t,n,kind='nearest',bounds_error=False,fill_value=np.nan)
+                f = interpolate.interp1d(t,n,kind=interp_kind,bounds_error=False,fill_value=np.nan)
                 N = f(TIME)
                 JD = np.where(np.isnan(N)==0)[0]
                 KD = np.where(np.diff(N[JD])==0)
@@ -325,7 +442,7 @@ for i in np.arange(0,len(LOCS)):
             if len(KD) > 1:
                 n = tbv[KD]
                 t = time[KD]
-                f = interpolate.interp1d(t,n,kind='nearest',bounds_error=False,fill_value=np.nan)
+                f = interpolate.interp1d(t,n,kind=interp_kind,bounds_error=False,fill_value=np.nan)
                 N = f(TIME)
                 JD = np.where(np.isnan(N)==0)[0]
                 KD = np.where(np.diff(N[JD])==0)
@@ -341,7 +458,7 @@ for i in np.arange(0,len(LOCS)):
             if len(KD) > 1:
                 n = fbv[KD]
                 t = time[KD]
-                f = interpolate.interp1d(t,n,kind='nearest',bounds_error=False,fill_value=np.nan)
+                f = interpolate.interp1d(t,n,kind=interp_kind,bounds_error=False,fill_value=np.nan)
                 N = f(TIME)
                 JD = np.where(np.isnan(N)==0)[0]
                 KD = np.where(np.diff(N[JD])==0)
@@ -350,7 +467,7 @@ for i in np.arange(0,len(LOCS)):
 
 
 ################################################################ WEATHER ####
-data = px.load_workbook("./Historical/Weather data.xlsx",data_only=True)
+data = px.load_workbook("../Data/Raw_lake/Historical/Weather data.xlsx",data_only=True)
 ws = data['Weather-BureauRecl Detroit Lake']
 
 ## Extract values
@@ -411,42 +528,42 @@ for x in np.arange(1,len(column)-1):
 
 # Interpolate to daily time series
 # and rearrange so its timeseries of each nut for each location
-f = interpolate.interp1d(time,tem,kind='nearest',bounds_error=False,fill_value=np.nan)
+f = interpolate.interp1d(time,tem,kind=interp_kind,bounds_error=False,fill_value=np.nan)
 N = f(TIME)
 JD = np.where(np.isnan(N)==0)[0]
 KD = np.where(np.diff(N[JD])==0)
 N[JD[KD]] = np.nan
 TEMP = N
 
-f = interpolate.interp1d(time,hum,kind='nearest',bounds_error=False,fill_value=np.nan)
+f = interpolate.interp1d(time,hum,kind=interp_kind,bounds_error=False,fill_value=np.nan)
 N = f(TIME)
 JD = np.where(np.isnan(N)==0)[0]
 KD = np.where(np.diff(N[JD])==0)
 N[JD[KD]] = np.nan
 HUM = N
 
-f = interpolate.interp1d(time,pwi,kind='nearest',bounds_error=False,fill_value=np.nan)
+f = interpolate.interp1d(time,pwi,kind=interp_kind,bounds_error=False,fill_value=np.nan)
 N = f(TIME)
 JD = np.where(np.isnan(N)==0)[0]
 KD = np.where(np.diff(N[JD])==0)
 N[JD[KD]] = np.nan
 PWI = N
 
-f = interpolate.interp1d(time,wis,kind='nearest',bounds_error=False,fill_value=np.nan)
+f = interpolate.interp1d(time,wis,kind=interp_kind,bounds_error=False,fill_value=np.nan)
 N = f(TIME)
 JD = np.where(np.isnan(N)==0)[0]
 KD = np.where(np.diff(N[JD])==0)
 N[JD[KD]] = np.nan
 WIS = N
 
-f = interpolate.interp1d(time,rain,kind='nearest',bounds_error=False,fill_value=np.nan)
+f = interpolate.interp1d(time,rain,kind=interp_kind,bounds_error=False,fill_value=np.nan)
 N = f(TIME)
 JD = np.where(np.isnan(N)==0)[0]
 KD = np.where(np.diff(N[JD])==0)
 N[JD[KD]] = np.nan
 RAIN = N
 
-f = interpolate.interp1d(time,pres,kind='nearest',bounds_error=False,fill_value=np.nan)
+f = interpolate.interp1d(time,pres,kind=interp_kind,bounds_error=False,fill_value=np.nan)
 N = f(TIME)
 JD = np.where(np.isnan(N)==0)[0]
 KD = np.where(np.diff(N[JD])==0)
@@ -476,7 +593,7 @@ PRES = N
 # WIS: wind speed
 # RAIN: rain
 # PRES: barometric pressure
-np.savez("../Preprocessed/Data_historical.npz",LOCS=LOCS,TIME=TIME,NUT1=NUT1,
+np.savez("../Data/Preprocessed/Data_hist_interp.npz",LOCS=LOCS,TIME=TIME,NUT1=NUT1,
         NUT2=NUT2,NUT3=NUT3,NUT4=NUT4,TOX1=TOX1,TOX2=TOX2,TOX3=TOX3,TOX4=TOX4,DIV=DIV,DEN=DEN,
         TBV=TBV,FBV=FBV,TEMP=TEMP,HUM=HUM,PWI=PWI,WIS=WIS,RAIN=RAIN,PRES=PRES)
 
