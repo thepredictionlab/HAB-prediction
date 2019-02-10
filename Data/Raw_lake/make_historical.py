@@ -67,7 +67,7 @@ def integrator(times, data, mode, domain):
             dataInt[k] = np.nan
     return dataInt
 
-def seasonalCleaner(times, data, funct, mode, domain)
+def seasonalCleaner(times, data, funct, mode, domain):
     t = times
     N = funct(times, data, mode, domain)
     yr = 2013
@@ -161,23 +161,23 @@ for i in np.arange(0,len(LOCS)):
     if len(ID) > 3:
         n = nut2[ID]
         t = Time[ID] 
-#        f = interpolate.interp1d(t,n,kind=interp_kind,bounds_error=False,fill_value=np.nan)
-#        N = f(TIME) 
-#        yr = 2013
-#        while yr <2019:
-#            if (np.where(t < yr+1)[0].shape[0] > 0)&(np.where(t >= yr+1)[0].shape[0] > 0):
-#                maxSample = np.max(t[t < yr+1])
-#                nextSample = np.min(t[t >= yr+1])
-#                yl = yearLength(yr)
-#                maxDay = (np.ceil((maxSample - yr)*yl - 0.5) + 0.5)/yl + yr
-#                nextYr = int(np.floor(nextSample))
-#                nextDay = (np.floor((nextSample - nextYr)*yl - 0.5) + 0.5)/yl + nextYr
-#                yl = yearLength(nextYr)
-#                N[(TIME > maxDay)&(TIME < nextDay)] = np.nan
-#                yr = nextYr
-#            else:
-#                yr += 1
-        N = seasonalCleaner(t,n,interpolator,interp_kind)
+       # f = interpolate.interp1d(t,n,kind=interp_kind,bounds_error=False,fill_value=np.nan)
+       # N = f(TIME) 
+       # yr = 2013
+       # while yr <2019:
+       #     if (np.where(t < yr+1)[0].shape[0] > 0)&(np.where(t >= yr+1)[0].shape[0] > 0):
+       #         maxSample = np.max(t[t < yr+1])
+       #         nextSample = np.min(t[t >= yr+1])
+       #         yl = yearLength(yr)
+       #         maxDay = (np.ceil((maxSample - yr)*yl - 0.5) + 0.5)/yl + yr
+       #         nextYr = int(np.floor(nextSample))
+       #         nextDay = (np.floor((nextSample - nextYr)*yl - 0.5) + 0.5)/yl + nextYr
+       #         yl = yearLength(nextYr)
+       #         N[(TIME > maxDay)&(TIME < nextDay)] = np.nan
+       #         yr = nextYr
+       #     else:
+       #         yr += 1
+        N = seasonalCleaner(t,n,interpolator,interp_kind,TIME)
         NUT2[:,i] = N 
     
 NUT3 = np.ones((len(TIME),len(LOCS))) * np.nan
