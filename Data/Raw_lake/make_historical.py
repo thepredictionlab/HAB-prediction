@@ -40,9 +40,51 @@ for i in range(2200):
     date += dt.timedelta(days=1)
     TIME = np.hstack((TIME,datetime2year(date)))
 
+## Define training and testing dates
 ## Locations we care about
 LOCS = ['BB','BO','HA','HT','LB','LBP','LBS','MG']
 
+## Make an interpolating function
+def interpolator(times, data, mode, domain):
+    f = interpolate.interp1d(times,data,kind=mode,bounds_error=False,fill_value=np.nan)
+    return f(domain)
+
+def integrator(times, data, mode, domain):
+    dataInt = np.zeros(len(domain))
+    for k in np.arange(len(domain)):
+        mask = (times >= domain[k])&(times < domain[k+1])
+        if mode == 'mean':
+            dataMean = np.nanmean(data[mask])
+            dataInt[k] = dataMean
+        elif mode == 'max':
+            dataMax = np.nanmax(data[mask])
+            dataInt[k] = dataMax
+        elif mode == 'min':
+            dataMin = np.nanmin(data[mask])
+            dataInt[k] = dataMin
+        else:
+            raise Exception('Not an appropriate input for integrator.')
+            dataInt[k] = np.nan
+    return dataInt
+
+def seasonalCleaner(times, data, funct, mode, domain)
+    t = times
+    N = funct(times, data, mode, domain)
+    yr = 2013
+    while yr <2019:
+        if (np.where(t < yr+1)[0].shape[0] > 0)&(np.where(t >= yr+1)[0].shape[0] > 0):
+            maxSample = np.max(t[t < yr+1])
+            nextSample = np.min(t[t >= yr+1])
+            yl = yearLength(yr)
+            maxDay = (np.ceil((maxSample - yr)*yl - 0.5) + 0.5)/yl + yr
+            nextYr = int(np.floor(nextSample))
+            nextDay = (np.floor((nextSample - nextYr)*yl - 0.5) + 0.5)/yl + nextYr
+            yl = yearLength(nextYr)
+            N[(TIME > maxDay)&(TIME < nextDay)] = np.nan
+            yr = nextYr
+        else:
+            yr += 1
+    return N
 
 ################################################################ NUTRIENTS ####
 data = px.load_workbook("../Data/Raw_lake/Historical/Nutrients.xlsx",data_only=True)
@@ -119,22 +161,23 @@ for i in np.arange(0,len(LOCS)):
     if len(ID) > 3:
         n = nut2[ID]
         t = Time[ID] 
-        f = interpolate.interp1d(t,n,kind=interp_kind,bounds_error=False,fill_value=np.nan)
-        N = f(TIME) 
-        yr = 2013
-        while yr <2019:
-            if (np.where(t < yr+1)[0].shape[0] > 0)&(np.where(t >= yr+1)[0].shape[0] > 0):
-                maxSample = np.max(t[t < yr+1])
-                nextSample = np.min(t[t >= yr+1])
-                yl = yearLength(yr)
-                maxDay = (np.ceil((maxSample - yr)*yl - 0.5) + 0.5)/yl + yr
-                nextYr = int(np.floor(nextSample))
-                nextDay = (np.floor((nextSample - nextYr)*yl - 0.5) + 0.5)/yl + nextYr
-                yl = yearLength(nextYr)
-                N[(TIME > maxDay)&(TIME < nextDay)] = np.nan
-                yr = nextYr
-            else:
-                yr += 1
+#        f = interpolate.interp1d(t,n,kind=interp_kind,bounds_error=False,fill_value=np.nan)
+#        N = f(TIME) 
+#        yr = 2013
+#        while yr <2019:
+#            if (np.where(t < yr+1)[0].shape[0] > 0)&(np.where(t >= yr+1)[0].shape[0] > 0):
+#                maxSample = np.max(t[t < yr+1])
+#                nextSample = np.min(t[t >= yr+1])
+#                yl = yearLength(yr)
+#                maxDay = (np.ceil((maxSample - yr)*yl - 0.5) + 0.5)/yl + yr
+#                nextYr = int(np.floor(nextSample))
+#                nextDay = (np.floor((nextSample - nextYr)*yl - 0.5) + 0.5)/yl + nextYr
+#                yl = yearLength(nextYr)
+#                N[(TIME > maxDay)&(TIME < nextDay)] = np.nan
+#                yr = nextYr
+#            else:
+#                yr += 1
+        N = seasonalCleaner(t,n,interpolator,interp_kind)
         NUT2[:,i] = N 
     
 NUT3 = np.ones((len(TIME),len(LOCS))) * np.nan
