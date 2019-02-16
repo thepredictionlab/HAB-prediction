@@ -1,8 +1,5 @@
 # make_something.py
 
-# File1 = '../Data/Raw_lake/make_historical.py'
-# File2 = './make_something.py'
-# exec(open(File2).read())
 ## for plotting: in bash execute
 ## export DISPLAY=localhost:0.0
 ## and turn on XMing
@@ -18,17 +15,8 @@ def timestamp():
 	    + str(now.hour) + str(now.minute) + str(now.second)
 	return s
 
-inclusionVector = [\
-	[1,0,0,0,1,0,0,0,0,0,0,0,0], #TBV
-	[0,0,0,0], # NUT
-	[0,0,0,0], # TOX
-	[1,0,0,1,0,0,0,0,0,0]] #WEA: TEMP, MAXT, MINT, WDEG, HUM, PWI, PRES, RAIN, DVR, WIS
-# Note dataOut will already be included in dataFull
-dataOut = data['TBV'][:,4]
-# Future values of predictand
-predOut = dataOut[1:]; predOut = np.insert(predOut,len(predOut),np.nan)
 
-folderName = './Results/TBV/'+str(inclusionVector)+'/' #4tbv_tem_maxt_rain/'
+folderName = './Results/TBV/4nut_tem_maxt_rain/'
 data_path = '../Data/Preprocessed/'
 data_file = 'Data_hist_interp.npz'
 data = np.load(data_path + data_file)
@@ -57,83 +45,58 @@ data = np.load(data_path + data_file)
 ########################################################################
 
 dates = data['TIME']
-WVARS = ['TEMP','MAXT','MINT','WDEG','HUM','PWI','PRES','RAIN','DVR','WIS']
-# Param types for each variable
-paramVector = [\
-	['l','l','l','l','l','l','l','l','l','l','l','l','l'], # BIO
-	['s','s','s','s'], # NUT
-	['l','l','l','l'], # TOX
-	['q','q','q','l','l','l','l','l','l','l']] # WEA
-# TEMP, MAXT, MINT, WDEG, HUM, PWI, PRES, RAIN, DVR, WIS
-
-# Define priors for all variables
-priorMeans = [\
-	[-1,-1,-1,-1,+1,-1,-1,-1,-1,-1,-1,-1,-1], # BIO
-	[[0.008, 0.055],[0.002, 0.025],[0.002, 0.025],[0.008, 0.055]], # NUT
-	[1,1,1,1], # TOX
-	[[8.5,-0.3],[8.5,-0.3],[8.5,-0.3],1,0,-1,0,1,0,-1] # WEA
-	]
-priorStds = [\
-	10*[1,1,1,1,1,1,1,1,1,1,1,1,1], # BIO
-	0.1*[[1,1],[1,1],[1,1],[1,1]], # NUT
-	2*[1,1,1,1], # TOX
-	[[2,0.5],[2,0.5],[2,0.5],1,1,1,1,1,1,1] # WEA
-	]
-
 
 # mask unwanted entries: 
 inputs = {'abundances':{'TBV'}, #},#'TBV'}, # need loc and div
-	'divisions':np.where(inclusionVector[0])[0], #[0,1,2,4], #[0,1,2],
+	'divisions':[4], #[0,1,2],
 	'locations':['BB','BO','HA','HT','LB','LBP','LBS'], #['LB','BO'],
-	'nutrients':np.where(inclusionVector[1])[0], #{},#'NUT1','NUT2','NUT3','NUT4'},		#{}, #{'NUT2'},		# need loc
-	'toxins':np.where(inclusionVector[2])[0], #{}, # 'TOX4'},
-	'weather':np.where(inclusionVector[3])[0]} #{'TEMP','MAXT','RAIN'}}#,'WDEG'}} # 'TEMP','MINT','MAXT'}}
+	'nutrients':{'NUT1','NUT2','NUT3','NUT4'},		#{}, #{'NUT2'},		# need loc
+	'toxins':{}, # 'TOX4'},
+	'weather':{'TEMP','MAXT','RAIN'}} # 'TEMP','MINT','MAXT'}}
 
-dataNames = [['baci_tbv','chlor_tbv','chrys_tbv','crypt_tbv','cyano_tbv',\
-			'eugle_tbv','hapt_tbv','hapt2_tbv','none','pyrr_tbv',\
-			'raphi_tbv','rhodo_tbv','xanth_tbv'],\
-			['NO','OP','TN','TP'],\
-			['cyano_lc','micro_lc','cyano_el','micro_el'],\
-			['tem','max_tem','min_tem','deg_days','hum','peak_wind',\
-			'pres','rain','shannon_div','wind_speed']]
+dataList = ['cyano_tbv',\
+			'nut1','nut2','nut3','nut4',\
+			'tem','max_tem','rain']
+paramType = ['l',\
+			 's','s','s','s',\
+			 'q','l','l']
+# Note dataOut will already be included in dataFull
+dataOut = data['TBV'][:,4]
+paramOut = 'l'
+#dataOut = np.nanmax(data['TOX4'][:,:],1)
+predOut = dataOut[1:]
+predOut = np.insert(predOut,len(predOut),np.nan)
 
-# Assemble priors and types. Same length as inclusionVector, compile
-# entries corresponding to nonzeros in incVec.
-paramType = []; mus = []; stds=[];
-for i1 in np.arange(len(inclusionVector)):
-	paramType.append([]); mus.append([]); stds.append([]);
-	for i2 in np.where(inclusionVector[i1])[0]:
-		paramType[i1].append(paramVector[i1][i2])
-		mus[i1].append(priorMeans[i1][i2])
-		stds[i1].append(priorStds[i1][i2])
+# define some priors - coefficients relating input to dataOut var.
+mus = [0.05, 0.1, 0.02, 0.04, 0.02, 0.04, 0.05, 0.1,\
+        8.5, -0.3,\
+        0.5, 0.5, 0.5]
+# note the final linear coeff for dataout (current tbv level)
+
+# simple variance estimate
+stds = 0.2*np.ones(len(mus))
 
 dataFull = np.array([])
-# This is for Total Biovolume only.  Adding other abundance measures will require a rewrite.
-# All relevant location data is averaged to get TBV level at a given time.
-for div in np.where(inclusionVector[0])[0]:
-	divFull = np.zeros((data['TIME'].shape[0],1)) * np.nan
-	#for loc in inputs['locations']:
-	#	ind1 = data['LOCS'].tolist().index(loc)
-	divFull = np.append(divFull, 
-		np.reshape(data['TBV'][:,div],(divFull.shape[0],1)), 1)
-		#np.reshape(data[dc][:,ind1,div],(divFull.shape[0],1)), 1)
-	dataFull = np.append(dataFull, np.nanmean(divFull,1))
-
-# Calculate the MEAN nutrient level across relevant sampling sites
-for nut in np.where(inclusionVector[1])[0]:
-	nutFull = np.zeros((data['TIME'].shape[0],1)) * np.nan
+for dc in inputs['abundances']:
+	for div in inputs['divisions']:
+		divFull = np.zeros((data['TIME'].shape[0],1)) * np.nan
+		#for loc in inputs['locations']:
+		#	ind1 = data['LOCS'].tolist().index(loc)
+		divFull = np.append(divFull, 
+			np.reshape(data[dc][:,div],(divFull.shape[0],1)), 1)
+			#np.reshape(data[dc][:,ind1,div],(divFull.shape[0],1)), 1)
+		dataFull = np.append(dataFull, np.nanmean(divFull,1))
+# Calculate the mean nutrient level across relevant sampling sites
+nutFull = np.zeros((data['TIME'].shape[0],1)) * np.nan
+for nut in inputs['nutrients']:
 	for loc in inputs['locations']:
-		nutFull = np.append(nutFull, data['NUT'+str(nut)][:,np.where(data['LOCS'] == loc)[0]], axis = 1)
+		nutFull = np.append(nutFull, data[nut][:,np.where(data['LOCS'] == loc)[0]], axis = 1)
 	dataFull = np.append(dataFull, np.nanmean(nutFull,1))
-
 # Collect MAX toxin level across sample sites
-for tox in np.where(inclusionVector[2])[0]:
-	item = 'TOX'+str(tox+1)
+for item in inputs['toxins']:
 	dataFull = np.append(dataFull, np.nanmax(data[item],1))
-
 # Collect weather data from detroit lake station
-for wea in np.where(inclusionVector[3])[0]:
-	item = WVARS[wea]
+for item in inputs['weather']:
 	dataFull = np.append(dataFull, data[item])
 dataFull = dataFull.reshape((data['TEMP'].shape[0],-1), order = 'F')
 print('dataFull shape = ' + str(dataFull.shape) + '.')
@@ -143,16 +106,17 @@ print('dataFull shape = ' + str(dataFull.shape) + '.')
 nanDays = np.any(np.isnan(dataFull),1) | np.isnan(predOut)
 domain = ~nanDays
 print('Domain consists of ' + str(dataFull[domain,0].shape[0]) + ' days.')
-sampledTimes = data['TIME'][domain]
+sampledTimes = TIME[domain]
 print(str(np.where(sampledTimes < 2018)[0].shape[0]) + ' days before 2018.')
 
 # Data matrix made. Make output matrix.
 y1 = np.array( predOut )
 
-# for nut1 and 4, C = 0.055, L = 0.008
-# for nut2 and 3, C = 0.025, L = 0.002
+# for nut1 and 4, C = 0.05, L = 0.1
+# for nut2 and 3, C = 0.02, L = 0.04
+# for nut3, 
 def sigmoid(x,L,C):
-	S = np.exp((x-C)/(2*L))/(np.exp((x-C)/(2*L))+1)
+	S = L*np.exp((x-C)/(2*L))/(np.exp((x-C)/(2*L))+1)
 	return S
 
 # for temp max growth at 29 C = 84.5 F
@@ -164,11 +128,11 @@ def quadratic(x,v,c):
 #	Q = [np.max(q,0) for q in Q]
 	return Q
 
-mSamples = 2000
+mSamples = 1000
 mCores = 4
 mTuning = 1000
 numVars = len(mus) # dataFull.shape[1]
-for t in np.arange(0,len(sampledTimes)): #len(sampledTimes)-15,len(sampledTimes)):
+for t in np.arange(0,len(sampledTimes)):
 	v = t #np.random.randint(len(sampledTimes))
 	subDomain = domain
 	subDomain[np.where(domain)[0][v]] = False
