@@ -19,7 +19,7 @@ def datetime2year(dt):
 import datetime as dt
 date = dt.datetime(2013,1,1,12,0,0)
 TIME = datetime2year(date) # this is the daily timeseries
-for i in range(2200):
+for i in range(round(2200/7)):
     date += dt.timedelta(days=7) ##<<<<<<<<< Change the temporal resolution of the interpolation
     TIME = np.hstack((TIME,datetime2year(date)))
 
