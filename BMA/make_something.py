@@ -23,10 +23,10 @@ data_file = 'Data_hist_interp.npz'
 data = np.load(data_path + data_file)
 
 inclusionVector = [\
-	[1,0,0,0,1,0,0,0,0,0,0,0,0], #TBV
+	[0,0,0,0,1,0,0,0,0,0,0,0,0], #TBV
 	[0,0,0,0], # NUT
 	[0,0,0,0], # TOX
-	[1,0,0,1,0,0,0,0,0,0]] #WEA: TEMP, MAXT, MINT, WDEG, HUM, PWI, PRES, RAIN, DVR, WIS
+	[1,0,0,1,0,0,0,1,0,0]] #WEA: TEMP, MAXT, MINT, WDEG, HUM, PWI, PRES, RAIN, DVR, WIS
 # Note dataOut will already be included in dataFull
 dataOut = data['TBV'][:,4]
 # Future values of predictand
@@ -70,13 +70,14 @@ priorMeans = [\
 	[-1,-1,-1,-1,+1,-1,-1,-1,-1,-1,-1,-1,-1], # BIO
 	[[0.008, 0.055],[0.002, 0.025],[0.002, 0.025],[0.008, 0.055]], # NUT
 	[1,1,1,1], # TOX
-	[[8.5,-0.3],[8.5,-0.3],[8.5,-0.3],1,0,-1,0,1,0,-1] # WEA
+	[[8.3,-0.1],[8.5,-0.3],[8.5,-0.3],1,0,-1,0,1,0,-1] # WEA
 	]
 priorStds = [\
-	[10,10,10,10,10,10,10,10,10,10,10,10,10], # BIO
+	[1,1,1,1,1,1,1,1,1,1,1,1,1], # BIO
+	#[10,10,10,10,10,10,10,10,10,10,10,10,10], # BIO
 	[[0.1,0.1],[0.1,0.1],[0.1,0.1],[0.1,0.1]], # NUT
 	[2,2,2,2], # TOX
-	[[2,0.5],[2,0.5],[2,0.5],1,1,1,1,1,1,1] # WEA
+	[[1,0.5],[2,0.5],[2,0.5],1,1,1,1,1,1,1] # WEA
 	]
 
 
@@ -160,7 +161,7 @@ print('dataFull shape = ' + str(dataFull.shape) + '.')
 # dates/times with NaNs
 nanDays = np.any(np.isnan(dataFull),1) | np.isnan(predOut)
 domain = ~nanDays
-print('Domain consists of ' + str(dataFull[domain,0].shape[0]) + ' days.')
+print('Domain consists of ' + str(dataFull[domain,0].shape[0]) + ' observations.')
 sampledTimes = data['TIME'][domain]
 print(str(np.where(sampledTimes < 2018)[0].shape[0]) + ' days before 2018.')
 
@@ -184,21 +185,21 @@ def quadratic(x,v,c):
 #	Q = [np.max(q,0) for q in Q]
 	return Q
 
-mSamples = 2000
-mCores = 4
-mTuning = 1000
+mSamples = 5000
+mCores = 2
+mTuning = 300
 # numVars = len(mus) # dataFull.shape[1]
 for t in np.arange(len(sampledTimes)-15,len(sampledTimes)): #0,len(sampledTimes)): #len(sampledTimes)-15,len(sampledTimes)):
 	v = t #np.random.randint(len(sampledTimes))
-	subDomain = domain
+	subDomain = domain.copy()
 	subDomain[np.where(domain)[0][v]] = False
 	subData =dataFull[subDomain,:]
 	obsOut = y1[subDomain]
 	linModel = pm.Model()
 	with linModel as model:
 		norm100 = pm.Normal('n', mu=0, sd=1)
-		coeffs = pm.Normal('c', mu=[float(k) for k in muList],\
-		 sd=[float(k) for k in stdList], shape=numParams)
+		coeffs = pm.Normal('c', mu=np.array([float(k) for k in muList]),\
+		 sd=np.array([float(k) for k in stdList]), shape=numParams)
 		mu = 0
 		pInd = 0
 		for k in np.arange(numVars):
@@ -216,13 +217,13 @@ for t in np.arange(len(sampledTimes)-15,len(sampledTimes)): #0,len(sampledTimes)
 		eta = pm.Normal('noise', mu=norm100, sd=1)
 		#eta2 = pm.AR('ar_noise',eta,sd = 1.0)
 		obs = pm.Normal('obs', mu = mu+eta, sd = 1, observed = obsOut)
-		trace = pm.sample(mSamples, cores = mCores, tuning = mTuning)
+		trace = pm.sample(mSamples, cores = mCores, tuning = 1000)
 	print(np.std(trace['c'],0))
 	np.savez(folderName+'Trace_'+str(v)+'_'+timestamp(),\
 			TRACE=trace,DATA=dataFull,RESPONSE=obsOut)
 	plt.figure()
 	pm.traceplot(trace)
-	plt.legend(dataList)
+	plt.legend(dataNameList)
 	plt.title(paramType)
 	plt.savefig(folderName+'Traceplot_'+str(v)+'_'+timestamp())
 	#plt.show()
@@ -236,14 +237,14 @@ for t in np.arange(len(sampledTimes)-15,len(sampledTimes)): #0,len(sampledTimes)
 		output = 0
 		pValues = trace['c'][j]
 		pInd = 0
-		for k in np.arange(len(paramType)):
-			if paramType[k] == 's':
+		for k in np.arange(len(paramList)):
+			if paramList[k] == 's':
 				output += sigmoid(testData[k],pValues[pInd+1],pValues[pInd])
 				pInd += 2
-			elif paramType[k] == 'q':
+			elif paramList[k] == 'q':
 				output += quadratic(testData[k],pValues[pInd],pValues[pInd+1])
 				pInd += 2
-			elif paramType[k] == 'l':
+			elif paramList[k] == 'l':
 				output += testData[k]*pValues[pInd]
 				pInd += 1
 			else:
