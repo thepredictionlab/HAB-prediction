@@ -67,7 +67,7 @@ labels=['0','4','8','12']
 ax.set_yticklabels(labels)
 
 #! Adorn
-plt.ylabel('Number of blooms',fontsize=16)
+plt.ylabel('Number of blooms (since 2013)',fontsize=16)
 plt.xlabel('Month of the year',fontsize=16)
 plt.xticks(fontsize=14)
 plt.yticks(fontsize=14)
