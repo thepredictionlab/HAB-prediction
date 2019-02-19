@@ -17,8 +17,10 @@ interp_kind = 'previous'
 #### Function for calculating decimal years
 from datetime import datetime
 def yearLength(yr):
-    year_length = datetime(year=yr+1, month=1, day=1) - datetime(year=yr, month=1, day=1)
-    return year_length.days
+    yr = np.reshape(yr,(-1,1))
+    year_length = [datetime(year=yr[k]+1, month=1, day=1) - datetime(year=yr[k], month=1, day=1) for k in np.arange(len(yr))]
+    year_length = [year_length[k].days for k in np.arange(len(yr))]
+    return year_length
 
 def datetime2year(dt):
     year_part = dt - datetime(year=dt.year, month=1, day=1)
@@ -26,18 +28,19 @@ def datetime2year(dt):
     return dt.year + year_part/year_length
 
 def year2datetime(date):
-    year = np.floor(date)
+    year = np.array(np.uint(np.floor(date)), ndmin=2)
     year_part = date - year
-    Seconds = year_part*yearLength(year)*24*60*60
-    Date = dt.datetime(year=year,month=1,day=1) + dt.timedelta(seconds = Seconds)
+    Seconds = year_part*np.uint(yearLength(year))*24*60*60
+    Date = [ dt.datetime(year=year[0][k] ,month=1,day=1) + dt.timedelta(seconds = Seconds[0][k]) for k in np.arange(year.size) ]
     return Date
 
 ## Create daily timeseries in decimal years
 import datetime as dt
 date = dt.datetime(2013,1,1,12,0,0)
+timeInt = dt.timedelta(days = 7)
 TIME = datetime2year(date) # this is the daily timeseries
-for i in range(2200):
-    date += dt.timedelta(days=1)
+for i in range(320): # range(2200):
+    date += timeInt
     TIME = np.hstack((TIME,datetime2year(date)))
 
 ## Define training and testing dates
@@ -51,19 +54,22 @@ def interpolator(times, data, mode, domain):
 
 def integrator(times, data, mode, domain):
     dataInt = np.zeros(len(domain))
-    for k in np.arange(len(domain)):
-        mask = (times >= domain[k])&(times < domain[k+1])
-        if mode == 'mean':
-            dataMean = np.nanmean(data[mask])
-            dataInt[k] = dataMean
-        elif mode == 'max':
-            dataMax = np.nanmax(data[mask])
-            dataInt[k] = dataMax
-        elif mode == 'min':
-            dataMin = np.nanmin(data[mask])
-            dataInt[k] = dataMin
+    for k in np.arange(1,len(domain)):
+        mask = (times >= domain[k-1])&(times < domain[k])
+        if np.any(mask):
+            if mode == 'mean':
+                dataMean = np.nanmean(data[mask])
+                dataInt[k] = dataMean
+            elif mode == 'max':
+                dataMax = np.nanmax(data[mask])
+                dataInt[k] = dataMax
+            elif mode == 'min':
+                dataMin = np.nanmin(data[mask])
+                dataInt[k] = dataMin
+            else:
+                raise Exception('Not an appropriate input for integrator.')
+                dataInt[k] = np.nan
         else:
-            raise Exception('Not an appropriate input for integrator.')
             dataInt[k] = np.nan
     return dataInt
 
@@ -72,15 +78,18 @@ def seasonalCleaner(times, data, funct, mode, domain):
     N = funct(times, data, mode, domain)
     yr = 2013
     while yr <2019:
+        print(str(yr)+': '+str(np.where((t>=yr)&(t<yr+1))[0].shape[0]) + ' records.')
         if (np.where(t < yr+1)[0].shape[0] > 0)&(np.where(t >= yr+1)[0].shape[0] > 0):
             maxSample = np.max(t[t < yr+1])
             nextSample = np.min(t[t >= yr+1])
             yl = yearLength(yr)
-            maxDay = (np.ceil((maxSample - yr)*yl - 0.5) + 0.5)/yl + yr
+            yl = yl[0]
+            maxInt = domain[np.min(np.where(domain >= maxSample)[0])]
             nextYr = int(np.floor(nextSample))
-            nextDay = (np.floor((nextSample - nextYr)*yl - 0.5) + 0.5)/yl + nextYr
             yl = yearLength(nextYr)
-            N[(TIME > maxDay)&(TIME < nextDay)] = np.nan
+            yl = yl[0]
+            nextInt = domain[np.min(np.where(domain >= nextSample)[0])]
+            N[(domain > maxInt)&(domain < nextInt)] = np.nan
             yr = nextYr
         else:
             yr += 1
@@ -103,136 +112,100 @@ column = ws['B']
 loc = np.empty(len(column)-1,dtype='object')
 for x in np.arange(1,len(column)):
     loc[x-1] = column[x].value
+
 uloc = np.unique(loc)
 
 # NO3+NO2 (mg/L)
 column = ws['D'] 
 nut1 = np.zeros(len(column)-1)
 for x in np.arange(1,len(column)):
-    nut1[x-1] = np.log(column[x].value)
+    nut1[x-1] = column[x].value #+ 0.0055
+    try:
+        nut1[x-1] = np.log( nut1[x-1] + 1 )
+    except:
+        nut1[x-1] = np.nan
 
 # O-Phos (mg/L)
 column = ws['E'] 
 nut2 = np.zeros(len(column)-1)
 for x in np.arange(1,len(column)):
-    nut2[x-1] = np.log(column[x].value)
+    nut2[x-1] = column[x].value
+    try:
+        nut2[x-1] = np.log( nut2[x-1] + 1 )
+    except:
+        nut2[x-1] = np.nan
 
 # TN (mg/L)
 column = ws['F'] 
 nut3 = np.zeros(len(column)-1)
 for x in np.arange(1,len(column)):
-    nut3[x-1] = np.log(column[x].value)
+    nut3[x-1] = column[x].value#+ 0.07 
+    try:
+        nut3[x-1] = np.log( nut3[x-1] + 1 )
+    except:
+        nut3[x-1] = np.nan
 
 # T-Phos (mg/L)
 column = ws['G'] 
 nut4 = np.zeros(len(column)-1)
 for x in np.arange(1,len(column)):
-    nut4[x-1] = np.log(column[x].value)
+    nut4[x-1] = column[x].value# + 0.003
+    try:
+        nut4[x-1] = np.log( nut4[x-1] + 1 )
+    except:
+        nut4[x-1] = np.nan
 
 # Interpolate to daily time series
 # and rearrange so its timeseries of each nut for each location
 NUT1 = np.ones((len(TIME),len(LOCS))) * np.nan
-for i in np.arange(0,len(LOCS)):
+for i in np.arange(0,len(LOCS)): #1): #0,len(LOCS)):
     ID = np.where(loc == LOCS[i])[0]
-    if len(ID) > 3:
+    #ID = np.isin(loc, LOCS)
+    if len(ID) > 1:
         n = nut1[ID]
         t = Time[ID] 
-        f = interpolate.interp1d(t,n,kind=interp_kind,bounds_error=False,fill_value=np.nan)
-        N = f(TIME) 
-        yr = 2013
-        while yr <2019:
-            if (np.where(t < yr+1)[0].shape[0] > 0)&(np.where(t >= yr+1)[0].shape[0] > 0):
-                maxSample = np.max(t[t < yr+1])
-                nextSample = np.min(t[t >= yr+1])
-                yl = yearLength(yr)
-                maxDay = (np.ceil((maxSample - yr)*yl - 0.5) + 0.5)/yl + yr
-                nextYr = int(np.floor(nextSample))
-                nextDay = (np.floor((nextSample - nextYr)*yl - 0.5) + 0.5)/yl + nextYr
-                yl = yearLength(nextYr)
-                N[(TIME > maxDay)&(TIME < nextDay)] = np.nan
-                yr = nextYr
-            else:
-                yr += 1
+        print('Nutrient 1 (nitrate/nitrite):')
+        N = seasonalCleaner(t,n,interpolator,interp_kind,TIME)
         NUT1[:,i] = N 
     
 NUT2 = np.ones((len(TIME),len(LOCS))) * np.nan
-for i in np.arange(0,len(LOCS)):
-    ID = np.where(loc == LOCS[i])[0]
+for i in np.arange(1): #0,len(LOCS)):
+    #ID = np.where(loc == LOCS[i])[0]
+    ID = np.isin(loc, LOCS)
     if len(ID) > 3:
         n = nut2[ID]
         t = Time[ID] 
-       # f = interpolate.interp1d(t,n,kind=interp_kind,bounds_error=False,fill_value=np.nan)
-       # N = f(TIME) 
-       # yr = 2013
-       # while yr <2019:
-       #     if (np.where(t < yr+1)[0].shape[0] > 0)&(np.where(t >= yr+1)[0].shape[0] > 0):
-       #         maxSample = np.max(t[t < yr+1])
-       #         nextSample = np.min(t[t >= yr+1])
-       #         yl = yearLength(yr)
-       #         maxDay = (np.ceil((maxSample - yr)*yl - 0.5) + 0.5)/yl + yr
-       #         nextYr = int(np.floor(nextSample))
-       #         nextDay = (np.floor((nextSample - nextYr)*yl - 0.5) + 0.5)/yl + nextYr
-       #         yl = yearLength(nextYr)
-       #         N[(TIME > maxDay)&(TIME < nextDay)] = np.nan
-       #         yr = nextYr
-       #     else:
-       #         yr += 1
+        print('Nutrient 2 (O-Phos):')
         N = seasonalCleaner(t,n,interpolator,interp_kind,TIME)
         NUT2[:,i] = N 
     
 NUT3 = np.ones((len(TIME),len(LOCS))) * np.nan
-for i in np.arange(0,len(LOCS)):
-    ID = np.where(loc == LOCS[i])[0]
-    if len(ID) > 3:
+for i in np.arange(1): #0,len(LOCS)):
+    #ID = np.where(loc == LOCS[i])[0]
+    ID = np.isin(loc, LOCS)
+    if len(ID) > 1:
         n = nut3[ID]
         t = Time[ID] 
-        f = interpolate.interp1d(t,n,kind=interp_kind,bounds_error=False,fill_value=np.nan)
-        N = f(TIME) 
-        yr = 2013
-        while yr <2019:
-            if (np.where(t < yr+1)[0].shape[0] > 0)&(np.where(t >= yr+1)[0].shape[0] > 0):
-                maxSample = np.max(t[t < yr+1])
-                nextSample = np.min(t[t >= yr+1])
-                yl = yearLength(yr)
-                maxDay = (np.ceil((maxSample - yr)*yl - 0.5) + 0.5)/yl + yr
-                nextYr = int(np.floor(nextSample))
-                nextDay = (np.floor((nextSample - nextYr)*yl - 0.5) + 0.5)/yl + nextYr
-                yl = yearLength(nextYr)
-                N[(TIME > maxDay)&(TIME < nextDay)] = np.nan
-                yr = nextYr
-            else:
-                yr += 1
+        print('Nutrient 3 (TN):')
+        N = seasonalCleaner(t,n,interpolator,interp_kind,TIME)
         NUT3[:,i] = N 
     
 NUT4 = np.ones((len(TIME),len(LOCS))) * np.nan
-for i in np.arange(0,len(LOCS)):
-    ID = np.where(loc == LOCS[i])[0]
-    if len(ID) > 3:
+for i in np.arange(1): #0,len(LOCS)):
+    #ID = np.where(loc == LOCS[i])[0]
+    ID = np.isin(loc, LOCS)
+    if len(ID) > 1:
         n = nut4[ID]
         t = Time[ID] 
-        f = interpolate.interp1d(t,n,kind=interp_kind,bounds_error=False,fill_value=np.nan)
-        N = f(TIME) 
-        yr = 2013
-        while yr <2019:
-            if (np.where(t < yr+1)[0].shape[0] > 0)&(np.where(t >= yr+1)[0].shape[0] > 0):
-                maxSample = np.max(t[t < yr+1])
-                nextSample = np.min(t[t >= yr+1])
-                yl = yearLength(yr)
-                maxDay = (np.ceil((maxSample - yr)*yl - 0.5) + 0.5)/yl + yr
-                nextYr = int(np.floor(nextSample))
-                nextDay = (np.floor((nextSample - nextYr)*yl - 0.5) + 0.5)/yl + nextYr
-                yl = yearLength(nextYr)
-                N[(TIME > maxDay)&(TIME < nextDay)] = np.nan
-                yr = nextYr
-            else:
-                yr += 1
+        print('Nutrient 4 (T-Phos):')
+        N = seasonalCleaner(t,n,interpolator,interp_kind,TIME)
         NUT4[:,i] = N 
     
 
 
 ################################################################### TOXINS ####
+ 
 data = px.load_workbook("../Data/Raw_lake/Historical/CyanotoxinConcentrations.xlsx",data_only=True)
-
 ## Extract values from LCMSMS
 # Time
 ws = data['LCMSMS']
@@ -248,13 +221,18 @@ column = ws['B']
 loc = np.empty(len(column)-1,dtype='object')
 for x in np.arange(1,len(column)):
     loc[x-1] = np.str(column[x].value)
+
 uloc = np.unique(loc)
 
 # Cylindro (ppb)
 column = ws['C']
 tox1 = np.zeros(len(column)-1)
 for x in np.arange(1,len(column)):
-    tox1[x-1] = np.log(column[x].value)
+    tox1[x-1] = column[x].value
+    try:
+        tox1[x-1] = np.log( tox1[x-1] )
+    except:
+        tox1[x-1] = np.nan
 
 # Microcystin (ppb)
 column = ws['D']
@@ -269,51 +247,25 @@ for x in np.arange(1,len(column)):
 # Interpolate to daily time series
 # and rearrange so its timeseries of each nut for each location
 TOX1 = np.ones((len(TIME),len(LOCS))) * np.nan
-for i in np.arange(0,len(LOCS)):
-    ID = np.where(loc == LOCS[i])[0]
+for i in np.arange(1): #0,len(LOCS)):
+    #ID = np.where(loc == LOCS[i])[0]
+    ID = np.isin(loc, LOCS)
     if len(ID)>3:
         n = tox1[ID]
         t = time[ID]
-        f = interpolate.interp1d(t,n,kind=interp_kind,bounds_error=False,fill_value=np.nan)
-        N = f(TIME)
-        yr = 2013
-        while yr <2019:
-            if (np.where(t < yr+1)[0].shape[0] > 0)&(np.where(t >= yr+1)[0].shape[0] > 0):
-                maxSample = np.max(t[t < yr+1])
-                nextSample = np.min(t[t >= yr+1])
-                yl = yearLength(yr)
-                maxDay = (np.ceil((maxSample - yr)*yl - 0.5) + 0.5)/yl + yr
-                nextYr = int(np.floor(nextSample))
-                nextDay = (np.floor((nextSample - nextYr)*yl - 0.5) + 0.5)/yl + nextYr
-                yl = yearLength(nextYr)
-                N[(TIME > maxDay)&(TIME < nextDay)] = np.nan
-                yr = nextYr
-            else:
-                yr += 1
+        print('LC Cylindro:')
+        N = seasonalCleaner(t,n,interpolator,interp_kind,TIME)
         TOX1[:,i] = N
 
 TOX2 = np.ones((len(TIME),len(LOCS))) * np.nan
-for i in np.arange(0,len(LOCS)):
-    ID = np.where(loc == LOCS[i])[0]
+for i in np.arange(1): #0,len(LOCS)):
+    #ID = np.where(loc == LOCS[i])[0]
+    ID = np.isin(loc, LOCS)
     if len(ID)>3:
         n = tox2[ID]
         t = time[ID]
-        f = interpolate.interp1d(t,n,kind=interp_kind,bounds_error=False,fill_value=np.nan)
-        N = f(TIME)
-        yr = 2013
-        while yr <2019:
-            if (np.where(t < yr+1)[0].shape[0] > 0)&(np.where(t >= yr+1)[0].shape[0] > 0):
-                maxSample = np.max(t[t < yr+1])
-                nextSample = np.min(t[t >= yr+1])
-                yl = yearLength(yr)
-                maxDay = (np.ceil((maxSample - yr)*yl - 0.5) + 0.5)/yl + yr
-                nextYr = int(np.floor(nextSample))
-                nextDay = (np.floor((nextSample - nextYr)*yl - 0.5) + 0.5)/yl + nextYr
-                yl = yearLength(nextYr)
-                N[(TIME > maxDay)&(TIME < nextDay)] = np.nan
-                yr = nextYr
-            else:
-                yr += 1
+        print('LC Microcystin:')
+        N = seasonalCleaner(t,n,interpolator,interp_kind,TIME)
         TOX2[:,i] = N
 
 
@@ -332,6 +284,7 @@ column = ws['B']
 loc = np.empty(len(column)-1,dtype='object')
 for x in np.arange(1,len(column)):
     loc[x-1] = np.str(column[x].value)
+
 uloc = np.unique(loc)
 
 # Cylindro (ppb)
@@ -348,56 +301,34 @@ for x in np.arange(1,len(column)):
 column = ws['D']
 tox4 = np.zeros(len(column)-1)
 for x in np.arange(1,len(column)):
-    tox4[x-1] = np.log(column[x].value)
+    tox4[x-1] = column[x].value
+    try:
+        tox4[x-1] = np.log(tox4[x-1])
+    except:
+        tox4[x-1] = np.nan
 
 # Interpolate to daily time series
 # and rearrange so its timeseries of each nut for each location
 TOX3 = np.ones((len(TIME),len(LOCS))) * np.nan
-for i in np.arange(0,len(LOCS)):
+for i in np.arange(0,len(LOCS)):#1): #0,len(LOCS)):
     ID = np.where(loc == LOCS[i])[0]
-    if len(ID)>3:
+    #ID = np.isin(loc, LOCS)
+    if len(ID)>1:
         n = tox3[ID]
         t = time[ID]
-        f = interpolate.interp1d(t,n,kind=interp_kind,bounds_error=False,fill_value=np.nan)
-        N = f(TIME)
-        yr = 2013
-        while yr <2019:
-            if (np.where(t < yr+1)[0].shape[0] > 0)&(np.where(t >= yr+1)[0].shape[0] > 0):
-                maxSample = np.max(t[t < yr+1])
-                nextSample = np.min(t[t >= yr+1])
-                yl = yearLength(yr)
-                maxDay = (np.ceil((maxSample - yr)*yl - 0.5) + 0.5)/yl + yr
-                nextYr = int(np.floor(nextSample))
-                nextDay = (np.floor((nextSample - nextYr)*yl - 0.5) + 0.5)/yl + nextYr
-                yl = yearLength(nextYr)
-                N[(TIME > maxDay)&(TIME < nextDay)] = np.nan
-                yr = nextYr
-            else:
-                yr += 1
+        print('ELISA Cylindro:')
+        N = seasonalCleaner(t,n,interpolator,interp_kind,TIME)
         TOX3[:,i] = N
 
 TOX4 = np.ones((len(TIME),len(LOCS))) * np.nan
-for i in np.arange(0,len(LOCS)):
-    ID = np.where(loc == LOCS[i])[0]
+for i in np.arange(1): #0,len(LOCS)):
+    #ID = np.where(loc == LOCS[i])[0]
+    ID = np.isin(loc, LOCS)
     if len(ID)>3:
         n = tox4[ID]
         t = time[ID]
-        f = interpolate.interp1d(t,n,kind=interp_kind,bounds_error=False,fill_value=np.nan)
-        N = f(TIME)
-        yr = 2013
-        while yr <2019:
-            if (np.where(t < yr+1)[0].shape[0] > 0)&(np.where(t >= yr+1)[0].shape[0] > 0):
-                maxSample = np.max(t[t < yr+1])
-                nextSample = np.min(t[t >= yr+1])
-                yl = yearLength(yr)
-                maxDay = (np.ceil((maxSample - yr)*yl - 0.5) + 0.5)/yl + yr
-                nextYr = int(np.floor(nextSample))
-                nextDay = (np.floor((nextSample - nextYr)*yl - 0.5) + 0.5)/yl + nextYr
-                yl = yearLength(nextYr)
-                N[(TIME > maxDay)&(TIME < nextDay)] = np.nan
-                yr = nextYr
-            else:
-                yr += 1
+        print('ELISA Microcystin:')
+        N = seasonalCleaner(t,n,interpolator,interp_kind,TIME)
         TOX4[:,i] = N
 
 
@@ -418,6 +349,7 @@ column = ws['A']
 loc = np.empty(len(column)-1,dtype='object')
 for x in np.arange(1,len(column)):
     loc[x-1] = column[x].value
+
 uloc = np.unique(loc)
 
 # Genus
@@ -436,7 +368,7 @@ DIV = udiv
 
 # Tally
 column = ws['G'] 
-tal = np.zeros(len(column)-1)
+tal = np.zeros(len(column)-1) * np.nan
 for x in np.arange(1,len(column)):
     tal[x-1] = column[x].value
 
@@ -451,6 +383,11 @@ column = ws['K']
 tbv = np.zeros(len(column)-1)
 for x in np.arange(1,len(column)):
     tbv[x-1] = column[x].value
+    try:
+        tbv[x-1] = np.log(tbv[x-1])
+    except:
+        tbv[x-1] = np.nan
+    #tbv[x-1] = column[x].value
 
 # % Biovolume
 column = ws['L'] 
@@ -461,40 +398,44 @@ for x in np.arange(1,len(column)):
 # Interpolate to daily time series
 # and rearrange so its timeseries of each nut for each location
 DEN = np.ones((len(TIME),len(LOCS),len(udiv))) * np.nan
-for i in np.arange(0,len(LOCS)):
-    ID = np.where(loc == LOCS[i])[0]
-    if len(ID)>3:
+for i in np.arange(1): #0,len(LOCS)):
+    #ID = np.where(loc == LOCS[i])[0]
+    ID = np.isin(loc, LOCS)
+    if len(ID)>1:
         for j in np.arange(0,len(udiv)):
             KD = np.where((div == udiv[j]) & (loc == LOCS[i]))[0]
             if len(KD) > 1:
                 n = den[KD]
                 t = time[KD]
-                f = interpolate.interp1d(t,n,kind=interp_kind,bounds_error=False,fill_value=np.nan)
-                N = f(TIME)
-                JD = np.where(np.isnan(N)==0)[0]
-                KD = np.where(np.diff(N[JD])==0)
-                N[JD[KD]] = np.nan
+                N = seasonalCleaner(t,n,interpolator,interp_kind,TIME)
                 DEN[:,i,j] = N
 
-TBV = np.ones((len(TIME),len(LOCS),len(udiv))) * np.nan
-for i in np.arange(0,len(LOCS)):
-    ID = np.where(loc == LOCS[i])[0]
-    if len(ID)>3:
+# Remove spatial info
+# TBV = np.ones((len(TIME),len(LOCS),len(udiv))) * np.nan
+TBV = np.ones((len(TIME),len(udiv))) * np.nan
+for i in np.arange(1): #0,len(LOCS)):
+    #ID = np.where(loc == LOCS[i])[0]
+    ID = np.isin(loc, LOCS)
+    if len(ID)>1:
         for j in np.arange(0,len(udiv)):
-            KD = np.where((div == udiv[j]) & (loc == LOCS[i]))[0]
+            KD = np.where((div == udiv[j]) & ID)[0]#(loc == LOCS[i]))[0]
             if len(KD) > 1:
                 n = tbv[KD]
                 t = time[KD]
-                f = interpolate.interp1d(t,n,kind=interp_kind,bounds_error=False,fill_value=np.nan)
-                N = f(TIME)
-                JD = np.where(np.isnan(N)==0)[0]
-                KD = np.where(np.diff(N[JD])==0)
-                N[JD[KD]] = np.nan
-                TBV[:,i,j] = N
+                # f = interpolate.interp1d(t,n,kind=interp_kind,bounds_error=False,fill_value=np.nan)
+                # N = f(TIME)
+                # JD = np.where(np.isnan(N)==0)[0]
+                # KD = np.where(np.diff(N[JD])==0)
+                # N[JD[KD]] = np.nan
+                print('Total biovolume of div '+str(j))
+                N = seasonalCleaner(t,n,interpolator,interp_kind,TIME)
+                #TBV[:,i,j] = N
+                TBV[:,j] = N
 
 FBV = np.ones((len(TIME),len(LOCS),len(udiv))) * np.nan
-for i in np.arange(0,len(LOCS)):
-    ID = np.where(loc == LOCS[i])[0]
+for i in np.arange(1): #0,len(LOCS)):
+    #ID = np.where(loc == LOCS[i])[0]
+    ID = np.isin(loc, LOCS)
     if len(ID)>3:
         for j in np.arange(0,len(udiv)):
             KD = np.where((div == udiv[j]) & (loc == LOCS[i]))[0]
@@ -571,17 +512,29 @@ for x in np.arange(1,len(column)-1):
 
 # Interpolate to daily time series
 # and rearrange so its timeseries of each nut for each location
-f = interpolate.interp1d(time,tem,kind=interp_kind,bounds_error=False,fill_value=np.nan)
-N = f(TIME)
-JD = np.where(np.isnan(N)==0)[0]
-KD = np.where(np.diff(N[JD])==0)
-N[JD[KD]] = np.nan
-TEMP = N
+# f = interpolate.interp1d(time,tem,kind=interp_kind,bounds_error=False,fill_value=np.nan)
+# N = f(TIME)
+# JD = np.where(np.isnan(N)==0)[0]
+# KD = np.where(np.diff(N[JD])==0)
+# N[JD[KD]] = np.nan
+# TEMP = N / 10
+
+N = seasonalCleaner(time, tem, integrator, 'mean', TIME)
+TEMP = N / 10
+
+N = seasonalCleaner(time, np.power(tem/10,2), integrator, 'mean', TIME)
+T2 = N / 10
+
+N = seasonalCleaner(time, tem, integrator, 'min', TIME)
+MINT = N / 10
+
+N = seasonalCleaner(time, tem, integrator, 'max', TIME)
+MAXT = N / 10
 
 f = interpolate.interp1d(time,hum,kind=interp_kind,bounds_error=False,fill_value=np.nan)
 N = f(TIME)
 JD = np.where(np.isnan(N)==0)[0]
-KD = np.where(np.diff(N[JD])==0)
+KD = np.where(np.diff(N[JD])==0)    
 N[JD[KD]] = np.nan
 HUM = N
 
@@ -599,45 +552,72 @@ KD = np.where(np.diff(N[JD])==0)
 N[JD[KD]] = np.nan
 WIS = N
 
-f = interpolate.interp1d(time,rain,kind=interp_kind,bounds_error=False,fill_value=np.nan)
-N = f(TIME)
-JD = np.where(np.isnan(N)==0)[0]
-KD = np.where(np.diff(N[JD])==0)
-N[JD[KD]] = np.nan
+# Make a degree day count - # of daily max temps exceeding a given value
+tempThreshold = 65
+
+## Get daily time series, divided at midnight
+date = dt.datetime(2013,1,1,0,0,0)
+timeInt = dt.timedelta(days = 1)
+TIMED = datetime2year(date) # this is the daily timeseries
+for i in range(2200):
+    date += timeInt
+    TIMED = np.hstack((TIMED,datetime2year(date)))
+
+## Get daily max temp over previous day
+N = seasonalCleaner(time, tem, integrator, 'max', TIMED)
+DEG = [np.nanmax([N[k]-tempThreshold,0]) for k in np.arange(len(N))]
+DDEG = np.zeros(len(DEG))
+for yr in np.arange(2013,2020):
+    days = (TIMED >= yr) & (TIMED < yr+1)
+    DDEG[days] = np.cumsum(np.array(DEG)[days])
+
+## Get weekly cumulative degree days
+N = seasonalCleaner(TIMED,DDEG,integrator, 'mean', TIME)
+WDEG = N*7
+## And rescale
+WDEG = WDEG/10
+
+N = seasonalCleaner(time,rain,integrator,'max',TIME)
 RAIN = N
 
-f = interpolate.interp1d(time,pres,kind=interp_kind,bounds_error=False,fill_value=np.nan)
-N = f(TIME)
-JD = np.where(np.isnan(N)==0)[0]
-KD = np.where(np.diff(N[JD])==0)
-N[JD[KD]] = np.nan
+N = seasonalCleaner(time,pres,integrator,'mean',TIME)
 PRES = N
 
-
+# Calculate species diversity
+DEN = np.nansum(DEN,1)
+PRCT = DEN/np.repeat(np.reshape(np.sum(DEN,1),(-1,1)), DEN.shape[1], 1)
+LPRCT = np.log(PRCT)
+LPRCT[np.where(LPRCT==-np.inf)] = 0
+DVR = np.sum(PRCT * LPRCT,1)
 
 ################################################################ SAVE ########
 # Locations: LOCS = ['BB','BO','HA','HT','LB','LBP','LBS']
 # TIME: decimal years (daily increments, at midday)
-# NUT1: NO3+NO2 (mg/L)
-# NUT2: O-Phos (mg/L)
-# NUT3: TN (mg/L)
-# NUT4: T-Phos (mg/L)
-# TOX1: LCMSMS Cylindro (ppb)
+# NUT1: NO3+NO2 (mg/L)                                  sparse
+# NUT2: O-Phos (mg/L)                                   sparse
+# NUT3: TN (mg/L)                                       sparse
+# NUT4: T-Phos (mg/L)                                   sparse
+# TOX1: LCMSMS Cylindro (ppb)                           sparse
 # TOX2: LCMSMS Microcystin (ppb)
-# TOX3: ELISA Cylindro (ppb)
+# TOX3: ELISA Cylindro (ppb)                            sparse
 # TOX4: ELISA Microcystin (ppb)
 # DIV: bacterial/algal family name
 # DEN: algal concentration
 # TBV: total biovolume
 # FBV: fractional biovolume
-# TEMP: temperature
+# TEMP: temperature 
+# T2: temp squared
+# MINT: minimum temperature over the period
+# MAXT: maximum temperature over the period
 # HUM: humidity
 # PWI: peak wind speed
 # WIS: wind speed
 # RAIN: rain
 # PRES: barometric pressure
-np.savez("../Data/Preprocessed/Data_hist_interp.npz",LOCS=LOCS,TIME=TIME,NUT1=NUT1,
-        NUT2=NUT2,NUT3=NUT3,NUT4=NUT4,TOX1=TOX1,TOX2=TOX2,TOX3=TOX3,TOX4=TOX4,DIV=DIV,DEN=DEN,
-        TBV=TBV,FBV=FBV,TEMP=TEMP,HUM=HUM,PWI=PWI,WIS=WIS,RAIN=RAIN,PRES=PRES)
+# WDEG: degree days integrated over each period
+# DVR: shannon diversity of algal populations           sparse
+np.savez("../Data/Preprocessed/Data_hist_interp.npz",LOCS=LOCS,TIME=TIME,NUT1=NUT1,WDEG=WDEG,
+        NUT2=NUT2,NUT3=NUT3,NUT4=NUT4,TOX1=TOX1,TOX2=TOX2,TOX3=TOX3,TOX4=TOX4,DIV=DIV,DEN=DEN,DVR=DVR,
+        TBV=TBV,FBV=FBV,TEMP=TEMP,T2=T2,MINT=MINT,MAXT=MAXT,HUM=HUM,PWI=PWI,WIS=WIS,RAIN=RAIN,PRES=PRES)
 
 

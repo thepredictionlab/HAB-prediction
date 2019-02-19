@@ -18,6 +18,10 @@ def timestamp():
 	    + str(now.hour) + str(now.minute) + str(now.second)
 	return s
 
+data_path = '../Data/Preprocessed/'
+data_file = 'Data_hist_interp.npz'
+data = np.load(data_path + data_file)
+
 inclusionVector = [\
 	[1,0,0,0,1,0,0,0,0,0,0,0,0], #TBV
 	[0,0,0,0], # NUT
@@ -27,11 +31,6 @@ inclusionVector = [\
 dataOut = data['TBV'][:,4]
 # Future values of predictand
 predOut = dataOut[1:]; predOut = np.insert(predOut,len(predOut),np.nan)
-
-folderName = './Results/TBV/'+str(inclusionVector)+'/' #4tbv_tem_maxt_rain/'
-data_path = '../Data/Preprocessed/'
-data_file = 'Data_hist_interp.npz'
-data = np.load(data_path + data_file)
 
 ########################################################################
 # Locations: LOCS = ['BB','BO','HA','HT','LB','LBP','LBS']
@@ -74,9 +73,9 @@ priorMeans = [\
 	[[8.5,-0.3],[8.5,-0.3],[8.5,-0.3],1,0,-1,0,1,0,-1] # WEA
 	]
 priorStds = [\
-	10*[1,1,1,1,1,1,1,1,1,1,1,1,1], # BIO
-	0.1*[[1,1],[1,1],[1,1],[1,1]], # NUT
-	2*[1,1,1,1], # TOX
+	[10,10,10,10,10,10,10,10,10,10,10,10,10], # BIO
+	[[0.1,0.1],[0.1,0.1],[0.1,0.1],[0.1,0.1]], # NUT
+	[2,2,2,2], # TOX
 	[[2,0.5],[2,0.5],[2,0.5],1,1,1,1,1,1,1] # WEA
 	]
 
@@ -99,13 +98,32 @@ dataNames = [['baci_tbv','chlor_tbv','chrys_tbv','crypt_tbv','cyano_tbv',\
 
 # Assemble priors and types. Same length as inclusionVector, compile
 # entries corresponding to nonzeros in incVec.
-paramType = []; mus = []; stds=[];
+paramType = []; mus = []; stds=[]; paramList = [];
+muList = []; stdList = []; dataNameList = [];
+numVars = 0; numParams = 0;
 for i1 in np.arange(len(inclusionVector)):
 	paramType.append([]); mus.append([]); stds.append([]);
 	for i2 in np.where(inclusionVector[i1])[0]:
 		paramType[i1].append(paramVector[i1][i2])
 		mus[i1].append(priorMeans[i1][i2])
 		stds[i1].append(priorStds[i1][i2])
+		numParams += len(np.array(priorMeans[i1][i2]).flatten())
+		paramList.extend(paramVector[i1][i2])
+		muList.extend([priorMeans[i1][i2]])
+		stdList.extend([priorStds[i1][i2]])
+		dataNameList.extend([dataNames[i1][i2]])
+	numVars += len(np.array(paramType[i1]))
+
+paramList = [k for sublist in paramList for item in [sublist if isinstance(sublist,list) else [sublist]] for k in item]
+muList = [k for sublist in muList for item in [sublist if isinstance(sublist,list) else [sublist]] for k in item]
+stdList = [k for sublist in stdList for item in [sublist if isinstance(sublist,list) else [sublist]] for k in item]
+dataNameList = [k for sublist in dataNameList for item in [sublist if isinstance(sublist,list) else [sublist]] for k in item]
+
+folderName = './Results/TBV/' #+str(inclusionVector)+'/' #4tbv_tem_maxt_rain/'
+for k in dataNameList:
+	folderName += k
+
+folderName += '/'
 
 dataFull = np.array([])
 # This is for Total Biovolume only.  Adding other abundance measures will require a rewrite.
@@ -148,6 +166,8 @@ print(str(np.where(sampledTimes < 2018)[0].shape[0]) + ' days before 2018.')
 
 # Data matrix made. Make output matrix.
 y1 = np.array( predOut )
+np.savez(folderName+'data_time_priors.npz',data=dataFull,times=data['TIME'],domain=domain,response=y1,\
+	priorMeans=priorMeans,priorStds=priorStds)
 
 # for nut1 and 4, C = 0.055, L = 0.008
 # for nut2 and 3, C = 0.025, L = 0.002
@@ -167,8 +187,8 @@ def quadratic(x,v,c):
 mSamples = 2000
 mCores = 4
 mTuning = 1000
-numVars = len(mus) # dataFull.shape[1]
-for t in np.arange(0,len(sampledTimes)): #len(sampledTimes)-15,len(sampledTimes)):
+# numVars = len(mus) # dataFull.shape[1]
+for t in np.arange(len(sampledTimes)-15,len(sampledTimes)): #0,len(sampledTimes)): #len(sampledTimes)-15,len(sampledTimes)):
 	v = t #np.random.randint(len(sampledTimes))
 	subDomain = domain
 	subDomain[np.where(domain)[0][v]] = False
@@ -177,16 +197,18 @@ for t in np.arange(0,len(sampledTimes)): #len(sampledTimes)-15,len(sampledTimes)
 	linModel = pm.Model()
 	with linModel as model:
 		norm100 = pm.Normal('n', mu=0, sd=1)
-		coeffs = pm.Normal('c', mu=mus, sd=stds, shape=numVars)
+		coeffs = pm.Normal('c', mu=[float(k) for k in muList],\
+		 sd=[float(k) for k in stdList], shape=numParams)
 		mu = 0
 		pInd = 0
-		for k in np.arange(len(paramType)):
-			if paramType[k] == 's':
+		for k in np.arange(numVars):
+			if paramList[k] == 's':
 				mu += sigmoid(subData[:,k],coeffs[pInd+1],coeffs[pInd]) # (x,L,C)
 				pInd += 2
-			elif paramType[k] == 'q':
+			elif paramList[k] == 'q':
 				mu += quadratic(subData[:,k],coeffs[pInd],coeffs[pInd+1])
-			elif paramType[k] == 'l':
+				pInd += 2
+			elif paramList[k] == 'l':
 				mu += subData[:,k]*coeffs[k]
 				pInd += 1
 			else:
