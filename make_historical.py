@@ -56,7 +56,9 @@ def integrator(times, data, mode, domain):
     dataInt = np.zeros(len(domain))
     for k in np.arange(1,len(domain)):
         mask = (times >= domain[k-1])&(times < domain[k])
+        data = np.array(data)
         if np.any(mask):
+            print(k)
             if mode == 'mean':
                 dataMean = np.nanmean(data[mask])
                 dataInt[k] = dataMean
@@ -74,7 +76,7 @@ def integrator(times, data, mode, domain):
     return dataInt
 
 def seasonalCleaner(times, data, funct, mode, domain):
-    t = times
+    t = np.array(times)
     N = funct(times, data, mode, domain)
     yr = 2013
     while yr <2019:
@@ -344,7 +346,10 @@ time = np.zeros(len(columnd)-1)
 for x in np.arange(1,len(columnd)):
     dated = columnd[x].value
     datet = columnt[x].value
-    date = dt.datetime.combine(dated,datet)
+    try:
+        date = dt.datetime.combine(dated,datet)
+    except:
+        date = dated
     time[x-1] = datetime2year(date)
 
 # site locations
@@ -398,20 +403,29 @@ fbv = np.zeros(len(column)-1)
 for x in np.arange(1,len(column)):
     fbv[x-1] = column[x].value
 
-# Interpolate to daily time series
-# and rearrange so its timeseries of each nut for each location
-DEN = np.ones((len(TIME),len(LOCS),len(udiv))) * np.nan
+# Interpolate time series
+# and rearrange so its timeseries of each div
+DEN = np.ones((len(TIME),len(udiv))) * np.nan # DEN = np.ones((len(TIME),len(LOCS),len(udiv))) * np.nan
 for i in np.arange(1): #0,len(LOCS)):
     #ID = np.where(loc == LOCS[i])[0]
     ID = np.isin(loc, LOCS)
     if len(ID)>1:
         for j in np.arange(0,len(udiv)):
-            KD = np.where((div == udiv[j]) & (loc == LOCS[i]))[0]
+            KD = np.where((div == udiv[j]) & ID)[0] # (loc == LOCS[i]))[0]
             if len(KD) > 1:
                 n = den[KD]
                 t = time[KD]
-                N = seasonalCleaner(t,n,interpolator,interp_kind,TIME)
-                DEN[:,i,j] = N
+                n1 = []
+                t1 = []
+                tvals = np.unique(t)
+                for s in np.arange(len(tvals)):
+                    conc_div_samples = np.where(t == tvals[s])[0]
+                    n1.append(np.nansum(n[conc_div_samples]))
+                    t1.append(tvals[s])
+                if (len(n1) != len(tvals))|(len(t1) != len(tvals)):
+                    raise Exception("Cell density data compilation failed.")
+                N = seasonalCleaner(t1,n1,integrator,'mean',TIME)
+                DEN[:,j] = N
 
 # TBV = np.ones((len(TIME),len(LOCS),len(udiv))) * np.nan
 ## make sure to sum across concurrent samples (same div, different genus)
@@ -599,7 +613,7 @@ N = seasonalCleaner(time,pres,integrator,'mean',TIME)
 PRES = N
 
 # Calculate species diversity
-DEN = np.nansum(DEN,1)
+#DEN = np.nansum(DEN,1)
 PRCT = DEN/np.repeat(np.reshape(np.sum(DEN,1),(-1,1)), DEN.shape[1], 1)
 LPRCT = np.log(PRCT)
 LPRCT[np.where(LPRCT==-np.inf)] = 0
