@@ -1,59 +1,23 @@
-### Preprocessed but cleaned and interpolated data
-
-## In Data_historical
-LOCS: locations in lake only ['BB','BO','HA','HT','LB','LBP','LBS']
-
-TIME: decimal years (daily increments, at midday, from 2013)
-
-NUT1: NO3+NO2 (mg/L)... time x locs
-
-NUT2: O-Phos (mg/L)... time x locs
-
-NUT3: TN (mg/L)... time x locs
-
-NUT4: T-Phos (mg/L)... time x locs
-
-TOX1: LCMSMS Cylindro (ppb)... time x locs
-
-TOX2: LCMSMS Microcystin (ppb)... time x locs
-
-TOX3: ELISA Cylindro (ppb)... time x locs
-
-TOX4: ELISA Microcystin (ppb)... time x locs
-
-DIV: bacterial/algal family name (there are 13)
-
-DEN: algal concentration... time x locs x div
-
-TBV: total biovolume... time x locs x div
-
-FBV: fractional biovolume... time x locs x div
-
-TEMP: temperature... time
-
-HUM: humidity... time
-
-PWI: peak wind speed... time
-
-WIS: wind speed... time
-
-RAIN: rain... time
-
-PRES: barometric pressure... time
+py_help.py
+	Defines useful functions and constants (priors, parameter types, data names, etc.)
 
 
-## In Data_sat_locations
-The lat/lons of 53 locations defining the skeleton of the lake, created using 
-ginput in python
 
-## In Data_LS8_timeseries.npz
-COL: the *color* of seven spectral bands:
-BANDS: the spectral bands:
-- 443
-- 483
-- 561
-- 655
-- 865
-- 1609
-- 2201
-TIME: Time (decimal years)
+make_posterior.py
+	Supporting function for make_likelihood.py, defines the makePost function.
+	This takes a folder and iterates through all Trace_XX_YY.npz files (LOO iterates)
+	compiling the ensemble of predictions given in the trace object into a posterior function.
+	This is then compared to the observed predictand value to get a likelihood for each LOO run.
+
+make_likelihood.py
+	Iterates through an experiment folder, running makePost on each subfolder (choice of vars).
+	The resulting likelihoods for each model are saved in the allLikelihoods.npz file
+	in the experiment folder.
+
+test_pred2018.py
+	For each model, makes a trace for each time step after 1/1/2018, using all prior data.
+	This creates a projection for the predictand (a posterior). 
+
+test_bma2018.py
+	These are averaged according to the weights given by allLikelihoods.npz.
+
